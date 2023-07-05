@@ -245,11 +245,11 @@ c9_in_smart <- cluster_9_method_de %>%
 ```{r}
 Idents(Seu_intd_obj) <- "seurat_clusters"
 DefaultAssay(Seu_intd_obj) <- "RNA"
-DotPlot(Seu_intd_obj, features = c(c9_in_10x, c_9_in_smart), idents=9, 
+DotPlot(Seu_intd_obj, features = c(c9_in_10x, c9_in_smart), idents=9, 
         group.by = "method") + RotatedAxis()
 
 DefaultAssay(Seu_intd_obj) <- "integrated"
-DotPlot(Seu_intd_obj, features = c(c9_in_10x, c_9_in_smart), idents=9, 
+DotPlot(Seu_intd_obj, features = c(c9_in_10x, c9_in_smart), idents=9, 
         group.by = "method") + RotatedAxis()
 ```
 
