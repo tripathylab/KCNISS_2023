@@ -32,12 +32,12 @@ Seurat tutorials:
 [Pseudobulk differential expression tutorial tutorial](https://hbctraining.github.io/scRNA-seq/lessons/pseudobulk_DESeq2_scrnaseq.html)
 
 ## Schedule
-**Day 1:** Intro to single-cell RNAseq analysis, R, and Seurat
+**Day 1:** [Intro to single-cell RNAseq analysis, R, and Seurat](https://github.com/tripathylab/KCNISS_2023/blob/main/code/Day_1.Rmd)
 
-**Day 2:** Intro to differential expression, cell type identification & visualizations
+**Day 2:** [Intro to differential expression, cell type identification & visualizations](https://github.com/tripathylab/KCNISS_2023/blob/main/code/Day_2.Rmd)
 
-**Day 3:** Dataset integration & automated cell type annotation
+**Day 3:** [Dataset integration & automated cell type annotation](https://github.com/tripathylab/KCNISS_2023/blob/main/code/Day_3.Rmd)
 
-**Day 4:** Case-control differential expression with pseudobulks
+**Day 4:** [Case-control differential expression with pseudobulks](https://github.com/tripathylab/KCNISS_2023/blob/main/code/Day_4.Rmd)
 
-**Day 5:** Spatial biology talks @ SickKids & final presentation!
+**Day 5:** [Spatial biology talks @ SickKids & final presentation!](https://github.com/tripathylab/KCNISS_2023/blob/main/code/Day_5.Rmd)
