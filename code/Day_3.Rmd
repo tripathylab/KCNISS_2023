@@ -1,0 +1,313 @@
+---
+title: 'KCNI Summer Academy 2023: Day 3'
+author: "Mel Davie"
+date: "12/07/2023"
+output: pdf_document
+---
+
+# Dataset integration & automated cell type annotation
+## Setup
+### Set working directory
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/Downloads/KCNISS_2023/")
+```
+
+### Load packages
+```{r}
+library(tidyverse)
+library(Seurat)
+
+### might need the following:
+# install.packages("BiocManager")
+# BiocManager::install("multtest")
+# library(multtest)
+# 
+# BiocManager::install("limma")
+# library(limma)
+# 
+# install.packages("metap")
+# library(metap)
+```
+
+### Create new Seurat objects
+But first, let's make a couple changes:
+- Just keep the genes that are present in both datasets
+- Add a column to metadata specifying the source dataset for each sample
+
+```{r}
+# load smart-seq
+meta_smart <- read.csv("AIBS_smart_meta_mini.csv", row.names = 1) %>% 
+  mutate(method = "smart")
+counts_smart <- read.csv("AIBS_smart_counts_mini.csv", row.names = 1)
+
+# load 10x
+meta_10x <- read.csv("SEA-AD_10x_meta_mini.csv", row.names = 1) %>% 
+  mutate(method = "10x")
+counts_10x <- read.csv("SEA-AD_10x_counts_mini.csv", row.names = 1)
+
+# filter counts matrices
+## Get the common gene names between the two datasets
+common_genes <- intersect(colnames(counts_smart), colnames(counts_10x))
+
+## Filter each counts matrix to include only the common genes
+counts_smart <- counts_smart[, common_genes]
+counts_10x <- counts_10x[, common_genes]
+
+# create Seurat objects
+Seu_smart_for_int <- CreateSeuratObject(counts = t(counts_smart), 
+                                meta.data = meta_smart) 
+
+Seu_10x_for_int <- CreateSeuratObject(counts = t(counts_10x), 
+                                meta.data = meta_10x) 
+
+#rm(counts_smart, counts_10x, meta_smart, meta_10x)
+```
+
+## Integration
+Choose to either go through the standard preprocessing workflow or the SCTransform workflow.
+### Standard method
+```{r}
+Seu.list <- c(Seu_smart_for_int, Seu_10x_for_int)
+
+#rm(Seu_smart, Seu_10x)
+
+# normalize and identify variable features for each dataset independently
+Seu.list <- lapply(X = Seu.list, FUN = function(x) {
+  x <- NormalizeData(x, normalization.method = "LogNormalize", scale.factor = 1000000)
+  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 3000)
+})
+
+# select features that are repeatedly variable across datasets for integration
+features <- SelectIntegrationFeatures(object.list = Seu.list)
+
+# controlling for differences between within-dataset variabilities (this step is slow)
+anchors <- FindIntegrationAnchors(object.list = Seu.list, anchor.features = features)
+
+# this command creates an 'integrated' data assay
+Seu_intd_obj <- IntegrateData(anchorset = anchors)
+
+#rm(Seu_smart_for_int, Seu_10x_for_int)
+```
+
+### Using SCTransform method
+Alternative to above, uses modified normalization method based on regularized negative binomial regression 
+```{r}
+Seu.list <- c(Seu_smart_for_int, Seu_10x_for_int)
+
+Seu.list <- lapply(X = Seu.list, FUN = function(x) {
+  x <- SCTransform(x, variable.features.n = 3000, conserve.memory = T)
+})
+
+# select features that are repeatedly variable across datasets for integration
+features <- SelectIntegrationFeatures(object.list = Seu.list, nfeatures=3000)
+
+Seu.list <- PrepSCTIntegration(object.list = Seu.list, anchor.features = features)
+
+# controlling for differences between within-dataset variabilities (this step is slow)
+anchors <- FindIntegrationAnchors(object.list = Seu.list, normalization.method = "SCT",
+                                  anchor.features = features)
+
+# this command creates an 'integrated' data assay
+Seu_intd_obj <- IntegrateData(anchorset = anchors, normalization.method = "SCT")
+
+#rm(Seu_smart_for_int, Seu_10x_for_int)
+```
+
+## Initial analysis
+```{r}
+# specify that we will perform downstream analysis on the corrected data, note that 
+# the original unmodified data still resides in the 'RNA' assay
+DefaultAssay(Seu_intd_obj) <- "integrated"
+
+# Run the standard workflow for visualization and clustering
+Seu_intd_obj <- ScaleData(Seu_intd_obj, verbose = FALSE)
+```
+
+```{r}
+Seu_intd_obj <- RunPCA(Seu_intd_obj, npcs = 30, verbose = FALSE)
+ElbowPlot(Seu_intd_obj, ndims = 30)
+```
+
+```{r}
+Seu_intd_obj <- FindNeighbors(Seu_intd_obj, reduction = "pca", dims = 1:30) %>% 
+  FindClusters(resolution = 0.5) %>% 
+  RunUMAP(reduction = "pca", dims = 1:30)
+
+# Check out how many cells placed into each cluster
+table(Seu_intd_obj$seurat_clusters)
+```
+
+## Visualizations
+### Examining our clusters
+```{r}
+DimPlot(Seu_intd_obj, reduction="umap", label=TRUE)
+```
+
+### How well did our datasets integrate?
+```{r}
+# how well did our datasets integrate?
+p1 <- DimPlot(Seu_intd_obj, reduction = "umap", group.by = "method")
+p2 <- DimPlot(Seu_intd_obj, reduction = "umap", group.by = "class_label")
+p1 + p2
+```
+
+```{r}
+DimPlot(Seu_intd_obj, reduction = "umap", group.by = "subclass_label", 
+        split.by = "method", label=TRUE)
+```
+
+Looks like our two datasets have different naming conventions for the same cell classes and subclasses. Let's fix this by taking everything in the subclass_label column and making it uppercase:
+```{r}
+Seu_intd_obj@meta.data$subclass_label <- toupper(Seu_intd_obj@meta.data$subclass_label)
+```
+
+### Create a plot to highlight a cell type
+```{r}
+DimPlot(Seu_intd_obj, reduction = "umap", group.by = "subclass_label",
+        cells.highlight = list(VIP=Seu_intd_obj@meta.data %>% 
+          filter(subclass_label == "VIP") %>% 
+                   row.names(.),
+          SST=Seu_intd_obj@meta.data %>% 
+          filter(subclass_label =="SST") %>% 
+                   row.names(.)),
+        cols.highlight = c("slateblue", "cadetblue"))
+```
+
+### Create a plot to compare gene expression within clusters between methods
+```{r}
+FeaturePlot(Seu_intd_obj, features = c("SST", "VIP", "PVALB"), split.by="method")
+```
+
+## Find conserved markers
+Can use these results to annotate clusters as specific cell types (look with FeaturePlot, rename with RenameIdents)
+
+```{r}
+# For performing differential expression after integration, we switch back to the 
+# original data
+DefaultAssay(Seu_intd_obj) <- "RNA"
+```
+
+*Optional:* This next step will take a long time, would recommend using parallelization here. Parallel processing should only be attempted if you think your computer can handle it—if not, skip this chunk and proceed.
+```{r}
+#install.packages("future")
+library(future)
+availableCores() # check how many "workers" you can assign
+plan("multiprocess", workers = 4) # changes from sequential to parallel
+```
+
+Let's look at cluster 9. Based on our earlier figures, cells in this group appear to be astrocytes.
+```{r}
+Idents(Seu_intd_obj) <- "seurat_clusters"
+cluster_9_markers <- FindConservedMarkers(Seu_intd_obj, ident.1 = 9, 
+                                          grouping.var = "method",
+                                          logfc.threshold = log(2), 
+                                          min.pct = 0.25)
+
+# top conserved cluster markers
+cluster_9_markers %>% 
+  head(n = 10)
+```
+
+## Differential expression
+Recall that when using "integrated" values, fold change values cannot be directly interpreted as integrated values have become unitless
+```{r}
+DefaultAssay(Seu_intd_obj) <- "integrated"
+# to compare a cluster between methods, must make metadata column combining these 
+# traits and set as active identity
+
+Seu_intd_obj$cluster_method <- paste(Idents(Seu_intd_obj), Seu_intd_obj$method, 
+                                     sep = "_")
+
+Idents(Seu_intd_obj) <- "cluster_method"
+
+cluster_9_method_de <- FindMarkers(Seu_intd_obj, ident.1 = "9_10x", 
+                                   ident.2 = "9_smart", 
+                                   logfc.threshold = log(2), min.pct = 0.25)
+
+# top DEG where 10x expresses more
+c9_in_10x <- cluster_9_method_de %>% 
+  filter(p_val_adj < 0.05) %>% 
+  filter(pct.1 > 0.1) %>% 
+  arrange(desc(avg_log2FC)) %>% 
+  head(n=5) %>% 
+  row.names()
+
+# top DEG where smart-seq expresses more
+c9_in_smart <- cluster_9_method_de %>% 
+  filter(p_val_adj < 0.05) %>% 
+  filter(pct.2 > 0.1) %>% 
+  arrange(avg_log2FC) %>% 
+  head(n=5) %>% 
+  row.names()
+```
+
+### Before vs. after integration
+```{r}
+Idents(Seu_intd_obj) <- "seurat_clusters"
+DefaultAssay(Seu_intd_obj) <- "RNA"
+DotPlot(Seu_intd_obj, features = c(c9_in_10x, c_9_in_smart), idents=9, 
+        group.by = "method") + RotatedAxis()
+
+DefaultAssay(Seu_intd_obj) <- "integrated"
+DotPlot(Seu_intd_obj, features = c(c9_in_10x, c_9_in_smart), idents=9, 
+        group.by = "method") + RotatedAxis()
+```
+
+## Cell type annotation
+Let's use our 10x dataset to annotate our Smart-seq dataset
+
+### Using TransferData
+In data transfer:
+- Seurat does not correct or modify the query expression data.
+- Seurat has an option (set by default) to project the PCA structure of a reference onto the query
+
+For the chunk below, use your pre-processed Seurat objects from the last two days.
+```{r}
+# We want to be able to check how accurate the mapping was, so let's make that
+# subclass label fix like we did before:
+Seu_10x@meta.data$subclass_label <- toupper(Seu_10x@meta.data$subclass_label)
+Seu_smart@meta.data$subclass_label <- toupper(Seu_smart@meta.data$subclass_label)
+
+anchors <- FindTransferAnchors(reference = Seu_10x, query = Seu_smart,
+    dims = 1:30, reference.reduction = "pca")
+predictions <- TransferData(anchorset = anchors, refdata = Seu_10x$subclass_label,
+    dims = 1:30)
+smart_query <- AddMetaData(Seu_smart, metadata = predictions)
+```
+
+After finding anchors, we use the TransferData() function to classify the query cells based on reference data (a vector of reference cell type labels). TransferData() returns a matrix with predicted IDs and prediction scores, which we can add to the query metadata.
+
+#### How accurate was the annotation transfer?
+Note that even after using toupper, there are some subclass_label mismatches, and not all subclasses are present in both datasets... can chose to fix this manually.
+```{r}
+smart_query$prediction.match <- smart_query$predicted.id == smart_query$subclass_label
+
+table(smart_query$prediction.match)
+
+table(smart_query$predicted.id)
+```
+After using the 10x as a reference above, you can choose to try using the Smart-seq as a reference to annotate the Smart-seq cells and see how this performs.
+
+### Using MapQuery
+An alternative to the above, based on projecting query dataset onto the UMAP structure of the reference dataset.
+
+```{r}
+anchors <- FindTransferAnchors(reference = Seu_10x, query = Seu_smart,
+    dims = 1:30, reference.reduction = "pca")
+
+Seu_10x <- RunUMAP(Seu_10x, dims = 1:30, return.model = TRUE)
+Seu_smart <- RunUMAP(Seu_smart, dims = 1:40, return.model = TRUE)
+
+smart_query <- MapQuery(anchorset = anchors, reference = Seu_10x, query = Seu_smart,
+    refdata = list(subclass_label = "subclass_label"), reference.reduction = "pca", 
+    reduction.model = "umap")
+```
+
+#### Let's see how well that worked:
+```{r}
+p1 <- DimPlot(Seu_10x, reduction = "umap", group.by = "subclass_label", label = TRUE, label.size = 3,
+    repel = TRUE) + NoLegend() + ggtitle("Reference annotations")
+p2 <- DimPlot(smart_query, reduction = "ref.umap", group.by = "predicted.subclass_label", label = TRUE,
+    label.size = 3, repel = TRUE) + NoLegend() + ggtitle("Query transferred labels")
+p1 + p2
+```

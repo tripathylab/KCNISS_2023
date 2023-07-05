@@ -1,0 +1,324 @@
+---
+title: 'KCNI Summer Academy 2023: Day 1'
+author: "Mel Davie"
+date: "10/07/2023"
+output: pdf_document
+---
+
+# Schedule
+Day 1: Intro to single-cell RNAseq analysis, R, and Seurat
+
+Day 2: Intro to differential expression, cell type identification & visualizations
+
+Day 3: Dataset integration & automated cell type annotation
+
+Day 4: Case-control differential expression with pseudobulks
+
+Day 5: Spatial biology talks @ SickKids & final presentation!
+
+# Resources
+## Basic R:
+R for Data Science
+https://r4ds.hadley.nz/
+
+## Seurat:
+Intro tutorial: 
+https://satijalab.org/seurat/articles/pbmc3k_tutorial.html
+
+Differential expression testing:
+https://satijalab.org/seurat/articles/de_vignette.html
+
+Data visualization:
+https://satijalab.org/seurat/articles/visualization_vignette.html
+
+Dataset integration & related analyses:
+https://satijalab.org/seurat/articles/integration_introduction.html
+
+Cell type annotation:
+https://satijalab.org/seurat/articles/integration_mapping.html
+
+## Case-control differential expression with pseudobulks:
+https://hbctraining.github.io/scRNA-seq/lessons/pseudobulk_DESeq2_scrnaseq.html
+
+# Intro to single-cell RNAseq analysis, R, and Seurat
+## Setup
+### Set working directory
+Alternatively, you can run setwd("your_path") from the console, or navigate to your directory in the Files tab and select "Set As Working Directory" from the More dropdown.
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/Downloads/KCNISS_2023/")
+```
+
+### Load packages
+These are the first two packages we need—more will be added as we go along
+```{r}
+#install.packages('tidyverse')
+library(tidyverse)
+#install.packages('Seurat')
+library(Seurat)
+```
+
+### Load data 
+Let's start by loading in the metadata and gene counts for the human Smart-seq dataset.
+Note that loading the counts matrix might take a couple minutes to run.
+```{r}
+# metadata
+meta_smart <- read.csv("AIBS_smart_meta_mini.csv", row.names = 1) 
+#row.names(meta_smart) should contain same values as row.names(counts_smart)
+
+# counts matrix
+counts_smart <- read.csv("AIBS_smart_counts_mini.csv", row.names = 1)
+```
+
+## Intro to tidyverse
+magrittr: pipe *%>%*
+
+dplyr:
+- mutate
+- filter
+- select
+- group_by
+- summarize
+
+**And later, we can look at...**
+
+dplyr:
+- bind_rows, left_join, etc.
+
+tidyr:
+- pivot_longer, pivot_wider
+
+ggplot2:
+- plot types (e.g. histogram, boxplot, bar, smooth, point, violin)
+- themes and aesthetics
+
+### Pipe %>% 
+These three operations are equivalent:
+```{r}
+# how many columns are in our metadata?
+length(meta_smart) 
+
+# instead of directly listing our metadata object within the function call, "pipe" 
+# it in to the desired location, marked by "."
+meta_smart %>%  
+  length(.)
+
+# when piping into a function, the target location is assumed to be the first 
+# parameter, so we don't need to specify "." unless we want it somewhere else 
+# (or in multiple locations)
+meta_smart %>% 
+  length
+```
+
+### dplyr 
+#### mutate()
+Let's say we want to add a column to our metadata that stores both the subclass label and the cortical layer information for each cell:
+```{r, include=FALSE}
+meta_smart %>% 
+  mutate(subclass_layer_label = paste(subclass_label, cortical_layer_label, 
+                                      sep = " "))
+```
+
+#### filter()
+Okay, now we're only interested in keeping cells annotated as VIP neurons:
+```{r, include=FALSE}
+meta_smart %>% 
+  filter(subclass_label == "VIP")
+```
+
+#### select()
+We don't need all of these columns—let's only keep the ones we've just used, plus the sample name. Also, columns will appear in the order you list them, so this is an easy opportunity to reorder.
+
+Note: if you're getting an error running the select function, you likely have another package loaded that's masking the function we need. To use a function from a specific package, you can preface it with the name of the package followed by a double colon, as is done below.
+```{r, include=FALSE}
+meta_smart %>% 
+  dplyr::select(sample_name, subclass_label, cortical_layer_label)
+```
+
+#### group_by()
+Let's say we want to apply a function to info from our metadata in a group-wise manner. For example, we want to count up the number of cells that we have within each cortical layer.
+
+This is where the pipe starts to come in handy, because without it, we'd have to store an intermediate output that we don't want.
+```{r}
+meta_smart %>% 
+  group_by(cortical_layer_label) %>% 
+  tally # tallies the number of items in each unique group 
+#(without specifying grouping, all the rows are assumed to be in one group)
+```
+
+#### summarize()
+This function works similarly to mutate in that it will create new columns that you define, but instead of creating a new value for each row like mutate, it will collapse to one row containing a value that summarizes all rows or, when provided with a grouping structure, a set of rows each containing a value that summarizes all rows within a group. 
+
+Let's put this all together to ask a really specific (albeit odd) question with our metadata:
+What specific region / cortical layer combo is the most common location for our VIP neurons, stratified by donor sex?
+```{r}
+meta_smart %>% 
+  filter(subclass_label == "VIP") %>% 
+  select(region_label, cortical_layer_label, donor_sex_label) %>% 
+  mutate(region_layer_label = paste(region_label, cortical_layer_label, 
+                                    sep = " ")) %>% 
+  group_by(donor_sex_label, region_layer_label) %>% 
+  tally %>% 
+  summarize(region_summary = region_layer_label[which.max(n)])
+```
+
+## Intro to the Seurat object
+We'll start off with the human SMART-seq data we loaded earlier.
+
+For more information about this dataset, check here: https://portal.brain-map.org/atlases-and-data/rnaseq/human-multiple-cortical-areas-smart-seq
+
+```{r}
+Seu_smart <- CreateSeuratObject(counts = t(counts_smart), 
+                                meta.data = meta_smart) #t(counts_smart) transposes 
+# so that we have rows as genes and columns as samples as they should be for Seurat
+
+# can choose to remove large matrices now that we have Seurat obj:
+#rm(counts_smart, meta_smart) 
+```
+
+*S3 vs. S4 objects*
+- Seurat obj is S4, S4s much more defined, must contain and can only contain certain things which are formally named
+- informal dataframes and lists like metadata stored in S3
+
+We can move through data structure with *$* or *@* (can use tab completion to know which is appropriate)
+
+```{r, include=FALSE}
+Idents(Seu_smart) #interacts with active.ident part of seurat obj. By default 
+                  #without providing orig.ident, pulls string before _
+Seu_smart@active.ident #same as above
+```
+
+### Pre-processing
+We're first going to go through each step one-by-one to understand what is happening and what we might want to change for our dataset, and then we'll check out an all-in-one method afterwards.
+
+Note: normally, it is bad practice to overwrite an object when making changes to it. Here, we are simply adding results in data section of the Seurat object, not overwriting any data, because we are using Seurat functions.
+
+#### Normalization
+*NormalizeData()* normalizes the gene expression values in the Seurat object Seu_smart using the "LogNormalize" method. It applies a logarithmic transformation to the data and scales the expression values by a factor of 1,000,000 (scale.factor) to make them more comparable across cells.
+
+Normalization is necessary to remove technical variations and biases in the data that could arise from differences in sequencing depth or cell size. CPM or counts per million is the most common scale factor used in this context to achieve a reasonable range of expression values for subsequent analyses.
+
+```{r, include=FALSE}
+Seu_smart <- NormalizeData(Seu_smart, normalization.method = "LogNormalize", 
+                           scale.factor = 1000000) #changing scale.factor to mil 
+                                                   #so we get cpm
+
+#look at normalized data
+Seu_smart@assays$RNA@data 
+```
+
+#### Find variable features
+*FindVariableFeatures()* identifies highly variable features (genes) in the dataset using the variance-stabilizing transformation (VST) method. The nfeatures parameter specifies the number of top variable features to select (in this case, 2000).
+
+Identifying variable features is important for downstream analyses as it helps focus on genes that show meaningful variation across cells and can be informative for distinguishing different cell types or states. The choice of nfeatures depends on the dataset and the desired balance between capturing a sufficient number of informative genes and avoiding noisy or uninformative genes.
+
+```{r, include=FALSE}
+Seu_smart <- FindVariableFeatures(Seu_smart, selection.method = "vst", 
+                                  nfeatures = 2000) #should see effect of 
+                                                    #changing nfeatures
+
+#look at most variable features
+Seu_smart@assays$RNA@var.features 
+```
+
+#### Scale data
+*ScaleData()* scales the gene expression values of the selected variable features in the Seurat object. It standardizes the expression values to have zero mean and unit variance.
+
+Scaling the data is necessary to remove the impact of differences in expression magnitude between genes and to ensure that genes with large expression values do not dominate the subsequent analyses. Scaling is typically performed before applying dimensionality reduction techniques.
+
+```{r}
+Seu_smart <- ScaleData(Seu_smart, verbose = FALSE)
+```
+
+#### Run Principal Component Analysis (PCA)
+*RunPCA()* performs Principal Component Analysis (PCA) on the scaled data in Seu_smart. The npcs parameter specifies the number of principal components to compute (in this case, 50).
+
+PCA reduces the dimensionality of the data by identifying linear combinations of genes (principal components) that capture the most significant sources of variation. The choice of npcs depends on the complexity and heterogeneity of the dataset. Exploratory analyses like an Elbow Plot can help in determining an appropriate number of principal components to retain.
+
+```{r}
+Seu_smart <- RunPCA(Seu_smart, npcs = 50, verbose = FALSE) #50 is default, we could 
+#choose something smaller based on ElbowPlot below
+
+ElbowPlot(Seu_smart, ndims=50) #see SD of each PC, shows how much variance explained 
+#use to see how many PC needed to best explain data
+#cut at the elbow (can argue where cutoff is, might choose 7 or 20)
+```
+
+#### Find neighbors
+*FindNeighbors()* identifies cell neighbors based on the PCA-reduced data in Seu_smart. The dims parameter specifies the subset of principal components to use for neighbor finding (in this case, components 1 to 20).
+
+Finding cell neighbors is crucial for subsequent clustering and visualization analyses. The choice of dims depends on the number of informative principal components that capture the most significant variation in the dataset. It is often determined based on the results of the PCA and the desired trade-off between preserving biological variation and reducing noise.
+```{r}
+Seu_smart <- FindNeighbors(Seu_smart, reduction = "pca", dims = 1:20) 
+#default dims is 1:10
+```
+
+#### Find clusters
+*FindClusters()* performs clustering analysis on the identified cell neighbors in Seu_smart. The resolution parameter determines the granularity of the clustering (in this case, 0.5).
+
+Clustering groups similar cells together based on their gene expression profiles. The choice of resolution affects the number and size of the resulting clusters.
+
+```{r}
+Seu_smart <- FindClusters(Seu_smart, resolution = 0.5) #default resolution is 0.8
+#nm.method and annoy.metric have drastic effects on cluster creation
+
+#tells you number of cells in each cluster
+table(Seu_smart$seurat_clusters) 
+
+#number of cells per class per cluster
+table(Seu_smart$seurat_clusters, Seu_smart$class_label) 
+
+#number of cells per subclass per cluster
+table(Seu_smart$seurat_clusters, Seu_smart$subclass_label) 
+```
+
+#### Run UMAP
+*RunUMAP()* computes the Uniform Manifold Approximation and Projection (UMAP) embedding on the PCA-reduced data in Seu_smart. UMAP is a dimensionality reduction technique that helps visualize the high-dimensional data in a lower-dimensional space. The reduction parameter specifies the reduction method used for UMAP (in this case, "pca"), and the dims parameter specifies the subset of principal components to use for the UMAP computation (in this case, components 1 to 20).
+
+Considerations for choosing the best values for these parameters involve understanding the dataset, the biological question of interest, and exploring the impact of parameter choices on the analysis results. It may require iterative experimentation and evaluation to optimize the parameter values for specific analysis goals, such as identifying relevant features, capturing variation, defining clusters, and obtaining informative visualizations.
+
+```{r}
+Seu_smart <- RunUMAP(Seu_smart, reduction = "pca", dims = 1:20)
+
+# visualizing clusters
+p1 <- DimPlot(Seu_smart, reduction = "umap", group.by = "subclass_label", label=TRUE)
+p2 <- DimPlot(Seu_smart, reduction = "umap", group.by = "seurat_clusters", label=TRUE, 
+              repel=TRUE)
+
+p1 + p2 # to view side-by-side
+```
+
+Here, *DimPlot()* creates a visualization of the cells in a two-dimensional space based on the UMAP reduction. Each cell is represented as a point, and the points are colored according to their assigned subclass label or cluster.
+
+This type of plot can be useful to:
+*Visualize the distribution and spatial arrangement of different cell types or clusters in the dataset.
+*Identify clusters or groupings of cells that share similar characteristics.
+*Assess the separation or overlap of cell types/clusters in the UMAP space.
+*Investigate potential relationships or transitions between cell types.
+
+#### SCTransform and all-in-one
+Note that the *SCTransform()* command replaces *NormalizeData()*, *ScaleData()*, and *FindVariableFeatures()*. Instead of log-normalization, uses regularized negative binomial regression.
+
+**From the vignette:**
+Relative to the standard Seurat workflow, with *sctransform*, we often benefit by pushing the npcs parameter higher. This could be a result of the *sctransform* workflow performing more effective normalization, strongly removing technical effects from the data.
+
+Even after standard log-normalization, variation in sequencing depth is still a confounding factor, and this effect can subtly influence higher PCs. In *sctransform*, this effect is substantially mitigated. This means that higher PCs are more likely to represent subtle, but biologically relevant, sources of heterogeneity – so including them may improve downstream analysis.
+
+In addition, *sctransform* returns 3,000 variable features by default, instead of 2,000. The rationale is similar, the additional variable features are less likely to be driven by technical differences across cells, and instead may represent more subtle biological fluctuations. In general, we find that results produced with sctransform are less dependent on these parameters.
+```{r}
+Seu_smart_2 <- CreateSeuratObject(counts = t(counts_smart), meta.data = meta_smart) %>%
+    SCTransform(variable.features.n = 3000) %>%
+    RunPCA() %>%
+    FindNeighbors(dims = 1:40) %>%
+    RunUMAP(dims = 1:40) %>%
+    FindClusters()
+
+p3 <- DimPlot(Seu_smart_2, reduction = "umap", group.by = "subclass_label", label=TRUE)
+p4 <- DimPlot(Seu_smart_2, reduction = "umap", group.by = "seurat_clusters", label=TRUE)
+
+p3 + p4
+```
+
+# Save your Seurat object for next time
+```{r, eval=FALSE}
+saveRDS(Seu_smart, "Seu_smart.rds")
+```

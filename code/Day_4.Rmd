@@ -1,0 +1,228 @@
+---
+title: 'KCNI Summer Academy 2023: Day 4'
+author: "Mel Davie"
+date: "13/07/2023"
+output: pdf_document
+---
+
+# Case-control differential expression with pseudobulks
+## Setup
+### Set working directory
+```{r setup}
+knitr::opts_knit$set(root.dir = "~/Downloads/KCNISS_2023/SST_pseudobulk/")
+```
+
+### Load packages
+```{r}
+#install.packages("BiocManager")
+#BiocManager::install("edgeR")
+#BiocManager::install("locfit") 
+##if locfit above doesn't work (because your version of R is too old):
+#install.packages("https://cran.r-project.org/src/contrib/Archive/locfit/locfit_1.5-9.4.tar.gz", repos=NULL, type="source")
+#install.packages("ggrepel")
+#install.packages("cowplot")
+#install.packages("gprofiler2")
+
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(Seurat)
+  library(edgeR)
+  library(ggrepel)
+  library(cowplot)
+  library(limma)
+  library(ggpubr)
+  library(gprofiler2)
+})
+```
+
+### Load pseudobulked gene expression data
+The data we're about to load in have been pseudobulked in advance using this script:
+https://github.com/stripathy/pseudobulk_tutorial/blob/master/sea_ad_make_pseudobulk.R
+
+We will only be working with one cell type: SST neurons. 
+
+```{r}
+pseudobulk_sst_counts = read_csv('SST_pseudobulk.csv')
+sea_ad_meta = read_csv('SST_pseudobulk_meta.csv')
+gene_info = read_csv('SST_pseudobulk_gene_info.csv')
+rownames(pseudobulk_sst_counts) = gene_info$gene_symbol
+
+sea_ad_meta = sea_ad_meta %>% mutate(disease = factor(disease, 
+                                                      levels = c('normal', 'dementia')))
+```
+
+## Examining our dataset
+How does the number of SST cells per person compare between controls and patients with dementia?
+
+```{r}
+sea_ad_meta %>% 
+  ggplot(aes(x = disease, y = cells_per_donor)) + 
+  geom_boxplot() + 
+  theme_cowplot() + 
+  ylab('SST cells per donor') +
+  stat_compare_means()
+```
+
+It looks like there are fewer SST cells in individuals with dementia than controls
+
+### Normalize our counts to CPM
+```{r}
+### Create a cpm object with normalized gene expression counts for each pseudobulk sample
+pseudobulk_sst_cpm = edgeR::cpm(y = pseudobulk_sst_counts)
+rownames(pseudobulk_sst_cpm) = gene_info$feature_name
+
+pseudobulk_sst_cpm_trans = pseudobulk_sst_cpm %>% 
+  t() %>% 
+  as.data.frame()
+
+pseudobulk_sst_cpm_trans = left_join(sea_ad_meta, pseudobulk_sst_cpm_trans %>% 
+                                       rownames_to_column(var = 'donor_id')) 
+```
+
+### Plot gene expression of a gene (SST below) vs. all cell types
+```{r}
+pseudobulk_sst_cpm_trans %>% 
+  ggplot(aes(x = disease, y = log2(SST+1))) + 
+  geom_boxplot() + 
+  theme_cowplot() + 
+  ylab('SST expr (log2 CPM+1)') +
+  stat_compare_means()
+```
+
+### Show how SST normalized expression is related to the number of cells sampled per donor
+```{r}
+pseudobulk_sst_cpm_trans %>% 
+  ggplot(aes(x = log2(SST+1), y = log10(cells_per_donor + 1), color = disease)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  theme_cowplot() + 
+  xlab('SST cells per donor (log10 units)') + 
+  ylab('SST expr (log2 CPM+1)') +
+  stat_cor()
+```
+
+## Differential expression with limma-voom
+### Set up stats model
+```{r}
+# Find subjects with information for disease, Sex, PMI, and Age
+use_subjects = complete.cases(sea_ad_meta %>% dplyr::select(disease, Sex, PMI, Age_norm))
+
+# Drop subjects with fewer than 50 SST cells per donor
+use_subjects = use_subjects & (sea_ad_meta$cells_per_donor > 50)
+
+disease = factor(unlist(sea_ad_meta[use_subjects, 'disease']), 
+                 levels = c('normal', 'dementia'))
+sex = sea_ad_meta[use_subjects, 'Sex'] %>% unlist
+pmi = sea_ad_meta[use_subjects, 'PMI'] %>% unlist
+age = sea_ad_meta[use_subjects, 'Age_norm'] %>% unlist
+cells_per_donor = sea_ad_meta[use_subjects, 'cells_per_donor'] %>% unlist
+
+# Count the number of subjects for each disease group
+sea_ad_meta[use_subjects, ] %>% 
+  group_by(disease) %>% 
+  tally
+```
+
+### Set up DGEList object
+```{r}
+dge0 = DGEList(pseudobulk_sst_counts[, use_subjects], genes = gene_info)
+
+min_samples_expressing_gene <- sea_ad_meta[use_subjects, ] %>% nrow * 0.8 
+# The 0.8 here refers to the fraction of total samples that needs to express the gene
+
+dge0 = dge0[rowSums(dge0$counts >= 1) >= min_samples_expressing_gene, ] 
+# This step filters genes such that they need to be detected in at least 80% of samples
+
+# dge0 = DGEList(pb_counts, group = pb_metadata$Phenotype)
+dge0 = calcNormFactors(dge0, method = "TMM")
+```
+
+### Set up design based on the factors defined above
+```{r}
+design = model.matrix(~ age + pmi + sex + log10(cells_per_donor) + disease) 
+
+# Perform voom transformation
+vm = voom(dge0, design, plot = TRUE)
+
+# Perform lmFit and eBayes
+fit = lmFit(vm, design)
+fit = eBayes(fit)
+```
+From the plot above, can see that genes with low counts have already been filtered out (otherwise we'd see a downward dip in the trend towards the left—if you see this, you need to go back and filter).
+
+### Analyze sex and disease terms
+#### Analyze genes associated with sex
+```{r}
+deg_table_sex = topTable(fit, coef = "sexMale",  n = Inf, sort = "none", 
+                         adjust.method = "BH")
+
+deg_table_sex %>% 
+  arrange(adj.P.Val) %>% 
+  head()
+```
+
+#### Volcano plot of genes associated with sex
+```{r}
+sex_volcano = deg_table_sex %>% 
+  ggplot(aes(x = logFC, y = -log10(P.Value), label = feature_name)) + 
+  geom_point() +
+  geom_text_repel(data = subset(deg_table_sex, adj.P.Val < 0.05), 
+                  aes(label = feature_name), 
+                  vjust = 1.5) +
+  geom_point(data = subset(deg_table_sex, adj.P.Val < 0.05), 
+             aes(color = 'red')) + 
+  theme_cowplot() +
+  theme(legend.position = "none")
+
+sex_volcano
+```
+
+#### Analyze genes associated with disease
+```{r}
+deg_table_disease = topTable(fit, coef = "diseasedementia",  n = Inf, sort = "none", 
+                             adjust.method = "BH")
+topTa
+deg_table_disease %>% 
+  arrange(adj.P.Val) %>% 
+  head(20)
+```
+
+#### Volcano plot of genes associated with disease
+```{r}
+disease_volcano = deg_table_disease %>% 
+  ggplot(aes(x = logFC, y = -log10(P.Value), label = feature_name)) + 
+  geom_point() +
+  geom_text_repel(data = subset(deg_table_disease, adj.P.Val < 0.1), 
+                  aes(label = feature_name), 
+                  vjust = 1.5) + 
+  geom_point(data = subset(deg_table_disease, adj.P.Val < 0.1), 
+             aes(color = 'red')) + 
+  theme_cowplot() +
+  theme(legend.position = "none")
+
+disease_volcano
+```
+
+#### Plot gene expression of a couple of DE genes below
+```{r}
+ihih5_plot = pseudobulk_sst_cpm_trans %>% 
+  ggplot(aes(x = disease, y = log2(ITIH5+1))) + 
+  geom_boxplot() + 
+  theme_cowplot() +
+  stat_compare_means()
+
+ihih5_plot
+```
+
+```{r}
+aqp4_as1_plot = pseudobulk_sst_cpm_trans %>% 
+  ggplot(aes(x = disease, y = log2(`AQP4-AS1`+1))) + 
+  geom_boxplot() + 
+  theme_cowplot() +
+  stat_compare_means()
+
+aqp4_as1_plot
+```
+
+## Gene ontology analysis
+**TODO**
