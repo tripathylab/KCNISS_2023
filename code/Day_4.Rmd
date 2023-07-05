@@ -181,7 +181,7 @@ sex_volcano
 ```{r}
 deg_table_disease = topTable(fit, coef = "diseasedementia",  n = Inf, sort = "none", 
                              adjust.method = "BH")
-topTa
+
 deg_table_disease %>% 
   arrange(adj.P.Val) %>% 
   head(20)
