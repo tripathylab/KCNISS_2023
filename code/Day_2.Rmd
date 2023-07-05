@@ -289,3 +289,8 @@ ggplot(RNA_counts_combined, aes(x = method, y = RNA_count, fill = method)) +
   stat_compare_means() + 
   theme(legend.position = "none")
 ```
+
+# Save your Seurat object for next time
+```{r, eval=FALSE}
+saveRDS(Seu_10x, "Seu_10x.rds")
+```
