@@ -42,9 +42,16 @@ https://github.com/stripathy/pseudobulk_tutorial/blob/master/sea_ad_make_pseudob
 We will only be working with one cell type: SST neurons. 
 
 ```{r}
-pseudobulk_sst_counts = read_csv('SST_pseudobulk.csv')
-sea_ad_meta = read_csv('SST_pseudobulk_meta.csv')
-gene_info = read_csv('SST_pseudobulk_gene_info.csv')
+pseudobulk_sst_counts = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk.csv')
+# pseudobulk_sst_counts = read_csv('SST_pseudobulk.csv')
+gene_info = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk_gene_info.csv')
+sea_ad_meta = read_csv('~/pseudobulk_tutorial/SST_pseudobulk_meta_updated.csv')
+
+
+# sea_ad_meta = read_csv('~/pseudobulk_tutorial/SST_pseudobulk_meta_updated.csv')
+
+# sea_ad_meta = read_csv('SST_pseudobulk_meta.csv')
+# gene_info = read_csv('SST_pseudobulk_gene_info.csv')
 rownames(pseudobulk_sst_counts) = gene_info$gene_symbol
 
 sea_ad_meta = sea_ad_meta %>% mutate(disease = factor(disease, 
@@ -56,8 +63,9 @@ How does the number of SST cells per person compare between controls and patient
 
 ```{r}
 sea_ad_meta %>% 
-  ggplot(aes(x = disease, y = cells_per_donor)) + 
-  geom_boxplot() + 
+  ggplot(aes(x = `Continuous Pseudo-progression Score`, y = cells_per_donor, color = disease)) + 
+  geom_point() + 
+  # geom_boxplot() + 
   theme_cowplot() + 
   ylab('SST cells per donor') +
   stat_compare_means()
@@ -108,10 +116,11 @@ pseudobulk_sst_cpm_trans %>%
 use_subjects = complete.cases(sea_ad_meta %>% dplyr::select(disease, Sex, PMI, Age_norm))
 
 # Drop subjects with fewer than 50 SST cells per donor
-use_subjects = use_subjects & (sea_ad_meta$cells_per_donor > 50)
+use_subjects = use_subjects & (sea_ad_meta$cells_per_donor > 50) & (!sea_ad_meta$`Cognitive status` == 'Reference')
 
 disease = factor(unlist(sea_ad_meta[use_subjects, 'disease']), 
                  levels = c('normal', 'dementia'))
+neuropath_score = sea_ad_meta[use_subjects, "Continuous Pseudo-progression Score"] %>% unlist
 sex = sea_ad_meta[use_subjects, 'Sex'] %>% unlist
 pmi = sea_ad_meta[use_subjects, 'PMI'] %>% unlist
 age = sea_ad_meta[use_subjects, 'Age_norm'] %>% unlist
@@ -139,7 +148,7 @@ dge0 = calcNormFactors(dge0, method = "TMM")
 
 ### Set up design based on the factors defined above
 ```{r}
-design = model.matrix(~ age + pmi + sex + log10(cells_per_donor) + disease) 
+design = model.matrix(~ age + pmi + sex + log10(cells_per_donor) + neuropath_score) 
 
 # Perform voom transformation
 vm = voom(dge0, design, plot = TRUE)
@@ -179,7 +188,7 @@ sex_volcano
 
 #### Analyze genes associated with disease
 ```{r}
-deg_table_disease = topTable(fit, coef = "diseasedementia",  n = Inf, sort = "none", 
+deg_table_disease = topTable(fit, coef = "neuropath_score",  n = Inf, sort = "none", 
                              adjust.method = "BH")
 
 deg_table_disease %>% 
@@ -206,10 +215,9 @@ disease_volcano
 #### Plot gene expression of a couple of DE genes below
 ```{r}
 ihih5_plot = pseudobulk_sst_cpm_trans %>% 
-  ggplot(aes(x = disease, y = log2(ITIH5+1))) + 
-  geom_boxplot() + 
-  theme_cowplot() +
-  stat_compare_means()
+  ggplot(aes(x = `Continuous Pseudo-progression Score`, y = log2(ITIH5+1), color = disease) ) + 
+  geom_point() + 
+  theme_cowplot() 
 
 ihih5_plot
 ```
