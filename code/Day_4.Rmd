@@ -233,4 +233,92 @@ aqp4_as1_plot
 ```
 
 ## Gene ontology analysis
-**TODO**
+### Disease
+#### Get gene lists
+```{r}
+# Genes that have higher expression in individuals with dementia relative to controls
+disease_up_ordered <- deg_table_disease %>% 
+  filter(P.Value < 0.05 & logFC > 0) %>% 
+  arrange(desc(logFC)) %>% 
+  .$gene_symbol
+
+# Genes that have lower expression in individuals with dementia relative to controls
+disease_down_ordered <- deg_table_disease %>% 
+  filter(P.Value < 0.05 & logFC < 0) %>% 
+  arrange(logFC) %>% 
+  .$gene_symbol
+```
+
+#### Enrichment analysis
+```{r}
+gp_disease = gost(list("up-regulated" = disease_up_ordered,
+	  "down-regulated" = disease_down_ordered), organism = "hsapiens",
+		        ordered_query = TRUE, sources = c("GO:BP", "GO:CC", "GO:MF"))
+
+# Top terms
+gp_disease_terms <- gp_disease$result %>% 
+  group_by(query, source) %>% 
+  slice_min(order_by = p_value, n = 3) %>% 
+  .$term_id
+```
+
+#### Plot results
+```{r}
+gostplot(gp_disease, capped = FALSE, interactive = FALSE, 
+         pal = list(`GO:MF` = "#6DC8E8", `GO:CC` = "#FF9179", `GO:BP` = "#57BCAC")) +
+  geom_text_repel(mapping = aes(label = ifelse(gp_disease$result$term_id %in% 
+                                                 gp_disease_terms,
+                                               term_name, "")), 
+                  force = 40, max.overlaps = Inf,size = 3) +
+  geom_point(size = 3, colour = ifelse(gp_disease$result$term_id %in% 
+                                                 gp_disease_terms,
+                                       "black", "white"),
+             alpha = ifelse(gp_disease$result$term_id %in% 
+                                                 gp_disease_terms,
+                                       1, 0))
+```
+
+### Sex
+#### Get gene lists
+```{r}
+# Genes that have higher expression in males relative to females
+male_up_ordered <- deg_table_sex %>% 
+  filter(P.Value < 0.05 & logFC > 0) %>% 
+  arrange(desc(logFC)) %>% 
+  .$gene_symbol
+
+# Genes that have lower expression in males relative to females
+male_down_ordered <- deg_table_sex %>% 
+  filter(P.Value < 0.05 & logFC < 0) %>% 
+  arrange(logFC) %>% 
+  .$gene_symbol
+```
+
+#### Enrichment analysis
+```{r}
+gp_sex = gost(list("up-regulated" = male_up_ordered,
+	  "down-regulated" = male_down_ordered), organism = "hsapiens",
+		        ordered_query = TRUE, sources = c("GO:BP", "GO:CC", "GO:MF"))
+
+# Top terms
+gp_sex_terms <- gp_sex$result %>% 
+  group_by(query, source) %>% 
+  slice_min(order_by = p_value, n = 3) %>% 
+  .$term_id
+```
+
+#### Plot results
+```{r}
+gostplot(gp_sex, capped = FALSE, interactive = FALSE, 
+         pal = list(`GO:MF` = "#6DC8E8", `GO:CC` = "#FF9179", `GO:BP` = "#57BCAC")) +
+  geom_text_repel(mapping = aes(label = ifelse(gp_sex$result$term_id %in% 
+                                                 gp_sex_terms,
+                                               term_name, "")), 
+                  force = 40, max.overlaps = Inf, size = 3) +
+  geom_point(size = 3, colour = ifelse(gp_sex$result$term_id %in% 
+                                                 gp_sex_terms,
+                                       "black", "white"),
+             alpha = ifelse(gp_sex$result$term_id %in% 
+                                                 gp_sex_terms,
+                                       1, 0))
+```
