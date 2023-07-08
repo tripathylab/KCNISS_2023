@@ -29,7 +29,7 @@ Seurat tutorials:
 * [Data visualization methods](https://satijalab.org/seurat/articles/visualization_vignette.html)
 * [Cell type annotation](https://satijalab.org/seurat/articles/integration_mapping.html)
 
-[Pseudobulk differential expression tutorial tutorial](https://hbctraining.github.io/scRNA-seq/lessons/pseudobulk_DESeq2_scrnaseq.html)
+[Pseudobulk differential expression tutorial](https://hbctraining.github.io/scRNA-seq/lessons/pseudobulk_DESeq2_scrnaseq.html)
 
 ## Schedule
 **Day 1:** [Intro to single-cell RNAseq analysis, R, and Seurat](https://github.com/tripathylab/KCNISS_2023/blob/main/code/Day_1.Rmd)
