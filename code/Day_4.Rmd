@@ -45,7 +45,7 @@ We will only be working with one cell type: SST neurons.
 pseudobulk_sst_counts = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk.csv')
 # pseudobulk_sst_counts = read_csv('SST_pseudobulk.csv')
 gene_info = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk_gene_info.csv')
-sea_ad_meta = read_csv('~/pseudobulk_tutorial/SST_pseudobulk_meta_updated.csv')
+sea_ad_meta = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk_meta_updated.csv')
 
 
 # sea_ad_meta = read_csv('~/pseudobulk_tutorial/SST_pseudobulk_meta_updated.csv')
@@ -62,16 +62,44 @@ sea_ad_meta = sea_ad_meta %>% mutate(disease = factor(disease,
 How does the number of SST cells per person compare between controls and patients with dementia?
 
 ```{r}
-sea_ad_meta %>% 
-  ggplot(aes(x = `Continuous Pseudo-progression Score`, y = cells_per_donor, color = disease)) + 
-  geom_point() + 
-  # geom_boxplot() + 
+p1 = sea_ad_meta %>% 
+  filter(`Neurotypical reference` == F) %>%
+  ggplot(aes(x = disease, y = cells_per_donor, fill = disease)) + 
+  #geom_point() + 
+  geom_boxplot() + 
   theme_cowplot() + 
-  ylab('SST cells per donor') +
+  ylab('SST nuclei per donor (count)') +
   stat_compare_means()
+
+p2 = sea_ad_meta %>% 
+  filter(`Neurotypical reference` == F) %>%
+  ggplot(aes(x = disease, y = cells_per_donor / total_cells_per_donor * 100, fill = disease)) + 
+  #geom_point() + 
+  geom_boxplot() + 
+  theme_cowplot() + 
+  ylab('SST nuclei fraction (%, total nuclei)') +
+  stat_compare_means()
+
+p1 + p2
 ```
 
 It looks like there are fewer SST cells in individuals with dementia than controls
+
+```{r}
+p1 = sea_ad_meta %>% 
+  filter(`Neurotypical reference` == F) %>%
+  ggplot(aes(x = `Continuous Pseudo-progression Score`, y = cells_per_donor / total_cells_per_donor * 100, color = disease, group = 1)) + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = F) + 
+  #geom_boxplot() + 
+  theme_cowplot() + 
+  ylab('SST nuclei fraction (%, total nuclei)') +
+  xlab('AD Pathology score') + 
+  stat_cor()
+
+p1
+```
+It looks like there are fewer SST cells in individuals with greater continuous AD neuropathology scores
 
 ### Normalize our counts to CPM
 ```{r}
@@ -89,25 +117,44 @@ pseudobulk_sst_cpm_trans = left_join(sea_ad_meta, pseudobulk_sst_cpm_trans %>%
 
 ### Plot gene expression of a gene (SST below) vs. all cell types
 ```{r}
-pseudobulk_sst_cpm_trans %>% 
-  ggplot(aes(x = disease, y = log2(SST+1))) + 
+p1 = pseudobulk_sst_cpm_trans %>% 
+  filter(`Neurotypical reference` == F) %>%
+  ggplot(aes(x = disease, y = log2(SST+1), fill = disease)) + 
   geom_boxplot() + 
   theme_cowplot() + 
-  ylab('SST expr (log2 CPM+1)') +
+  ylab('SST mRNA expr (log2 CPM+1)') +
   stat_compare_means()
+
+p1
 ```
+It looks like the expression of the SST mRNA is lower in individuals with dementia than controls.
 
 ### Show how SST normalized expression is related to the number of cells sampled per donor
 ```{r}
-pseudobulk_sst_cpm_trans %>% 
-  ggplot(aes(x = log2(SST+1), y = log10(cells_per_donor + 1), color = disease)) + 
+p2 = pseudobulk_sst_cpm_trans %>% 
+  filter(`Neurotypical reference` == F) %>%
+  ggplot(aes(x = cells_per_donor, y = log2(SST+1), color = disease, group = 1)) + 
   geom_point() + 
-  geom_smooth(method = "lm") +
+  geom_smooth(method = "lm", se = F) +
   theme_cowplot() + 
-  xlab('SST cells per donor (log10 units)') + 
-  ylab('SST expr (log2 CPM+1)') +
+  xlab('SST nuclei per donor') + 
+  ylab('SST mRNA expr (log2 CPM+1)') +
   stat_cor()
+
+p3 = pseudobulk_sst_cpm_trans %>% 
+  filter(`Neurotypical reference` == F) %>%
+  ggplot(aes(x = cells_per_donor / total_cells_per_donor * 100, y = log2(SST+1), color = disease, group = 1)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", se = F) +
+  theme_cowplot() + 
+  xlab('SST nuclei fraction (%, total nuclei)') +
+  ylab('SST mRNA expr (log2 CPM+1)') +
+  stat_cor()
+
+p2 + p3
+
 ```
+But notice that this is mostly an artifact of there being fewer SST cells in people with dementia than controls. This illustrates that numbers of cells sampled per cell type is a really important factor to consider when performing differential expression analyses.
 
 ## Differential expression with limma-voom
 ### Set up stats model
@@ -115,8 +162,9 @@ pseudobulk_sst_cpm_trans %>%
 # Find subjects with information for disease, Sex, PMI, and Age
 use_subjects = complete.cases(sea_ad_meta %>% dplyr::select(disease, Sex, PMI, Age_norm))
 
-# Drop subjects with fewer than 50 SST cells per donor
+# Drop subjects with fewer than 50 SST cells per donor and also younger donors who are part of the neurotypical reference
 use_subjects = use_subjects & (sea_ad_meta$cells_per_donor > 50) & (!sea_ad_meta$`Cognitive status` == 'Reference')
+use_subjects_donor_list = sea_ad_meta[use_subjects, 'donor_id'] %>% unlist
 
 disease = factor(unlist(sea_ad_meta[use_subjects, 'disease']), 
                  levels = c('normal', 'dementia'))
@@ -125,6 +173,7 @@ sex = sea_ad_meta[use_subjects, 'Sex'] %>% unlist
 pmi = sea_ad_meta[use_subjects, 'PMI'] %>% unlist
 age = sea_ad_meta[use_subjects, 'Age_norm'] %>% unlist
 cells_per_donor = sea_ad_meta[use_subjects, 'cells_per_donor'] %>% unlist
+library_size = pseudobulk_sst_counts[, use_subjects] %>% colSums %>% unlist()
 
 # Count the number of subjects for each disease group
 sea_ad_meta[use_subjects, ] %>% 
@@ -146,9 +195,11 @@ dge0 = dge0[rowSums(dge0$counts >= 1) >= min_samples_expressing_gene, ]
 dge0 = calcNormFactors(dge0, method = "TMM")
 ```
 
-### Set up design based on the factors defined above
+### Set up design based on the factors defined above - but we're first going to model AD disease as a binary variable
 ```{r}
-design = model.matrix(~ age + pmi + sex + log10(cells_per_donor) + neuropath_score) 
+design = model.matrix(~ age + pmi + sex + log10(cells_per_donor) + log10(library_size) + disease) 
+# design = model.matrix(~ age + pmi + sex + log10(cells_per_donor) + neuropath_score) # neuropath score here is the continuous pseudoprogression score 
+
 
 # Perform voom transformation
 vm = voom(dge0, design, plot = TRUE)
@@ -185,10 +236,11 @@ sex_volcano = deg_table_sex %>%
 
 sex_volcano
 ```
+Talk about what separates the genes from the left hand side of the plot from the right hand side of the plot. Does this make sense?
 
 #### Analyze genes associated with disease
 ```{r}
-deg_table_disease = topTable(fit, coef = "neuropath_score",  n = Inf, sort = "none", 
+deg_table_disease = topTable(fit, coef = "diseasedementia",  n = Inf, sort = "none", 
                              adjust.method = "BH")
 
 deg_table_disease %>% 
@@ -211,42 +263,112 @@ disease_volcano = deg_table_disease %>%
 
 disease_volcano
 ```
+Talk about how many fewer genes there are here differentially expressed with AD versus sex above. Why might this be the case?
+
+
 
 #### Plot gene expression of a couple of DE genes below
+Let's now plot some of the DE genes from above.
 ```{r}
 ihih5_plot = pseudobulk_sst_cpm_trans %>% 
-  ggplot(aes(x = `Continuous Pseudo-progression Score`, y = log2(ITIH5+1), color = disease) ) + 
-  geom_point() + 
+  filter(donor_id %in% use_subjects_donor_list) %>%
+  ggplot(aes(x = disease, y = log2(ITIH5+1), fill = disease) ) + 
+  ylab('ITIH5 mRNA expr (log2 CPM+1)') + 
+  geom_boxplot() + 
+  stat_compare_means() + 
   theme_cowplot() 
 
-ihih5_plot
-```
-
-```{r}
-aqp4_as1_plot = pseudobulk_sst_cpm_trans %>% 
-  ggplot(aes(x = disease, y = log2(`AQP4-AS1`+1))) + 
+ddx25_plot = pseudobulk_sst_cpm_trans %>% 
+  filter(donor_id %in% use_subjects_donor_list) %>%
+  ggplot(aes(x = disease, y = log2(DDX25+1), fill = disease)) + 
+  ylab('DDX25 mRNA expr (log2 CPM+1)') + 
   geom_boxplot() + 
   theme_cowplot() +
   stat_compare_means()
 
-aqp4_as1_plot
+ihih5_plot + ddx25_plot
+
+```
+### Let's redo the analysis of differential expression above, but let's now model AD as a continuous variable based on neuropathology scores
+```{r}
+
+design = model.matrix(~ age + pmi + sex + log10(cells_per_donor) + log10(library_size) + neuropath_score) # neuropath score here is the continuous pseudoprogression score 
+
+
+# Perform voom transformation
+vm = voom(dge0, design, plot = TRUE)
+
+# Perform lmFit and eBayes
+fit = lmFit(vm, design)
+fit = eBayes(fit)
+
+deg_table_ad_neuropath = topTable(fit, coef = "neuropath_score",  n = Inf, sort = "none", 
+                             adjust.method = "BH")
+
+deg_table_ad_neuropath %>% 
+  arrange(adj.P.Val) %>% 
+  head(20)
+
+```
+#### Volcano plot of genes associated with AD continuous neuropathology
+```{r}
+neuropath_volcano = deg_table_ad_neuropath %>% 
+  ggplot(aes(x = logFC, y = -log10(P.Value), label = feature_name)) + 
+  geom_point() +
+  geom_text_repel(data = subset(deg_table_ad_neuropath, adj.P.Val < 0.1), 
+                  aes(label = feature_name), 
+                  vjust = 1.5) + 
+  geom_point(data = subset(deg_table_ad_neuropath, adj.P.Val < 0.1), 
+             aes(color = 'red')) + 
+  theme_cowplot() +
+  theme(legend.position = "none")
+
+neuropath_volcano
+```
+Notice how many more genes are differentially expressed with AD neuropathology compared to the binary normal / dementia AD variable above.
+
+#### Plot gene expression of a couple of DE genes below
+Let's now plot some of the DE genes from above.
+```{r}
+negr1_plot = pseudobulk_sst_cpm_trans %>% 
+  filter(donor_id %in% use_subjects_donor_list) %>%
+  ggplot(aes(x = `Continuous Pseudo-progression Score`, y = log2(NEGR1+1), color = disease, group = 1) ) + 
+  ylab('NEGR1 mRNA expr (log2 CPM+1)') + 
+  xlab('AD Pathology score') + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = F) + 
+  theme_cowplot() + 
+  stat_cor() 
+
+prom1_plot = pseudobulk_sst_cpm_trans %>% 
+  filter(donor_id %in% use_subjects_donor_list) %>%
+  ggplot(aes(x = `Continuous Pseudo-progression Score`, y = log2(PROM1+1), color = disease, group = 1)) + 
+  ylab('PROM1 mRNA expr (log2 CPM+1)') + 
+  xlab('AD Pathology score') + 
+  geom_point() + 
+  geom_smooth(method = 'lm', se = F) + 
+  theme_cowplot() +
+  stat_cor()
+
+negr1_plot + prom1_plot
+
 ```
 
 ## Gene ontology analysis
-### Disease
+### AD Neuropathology - associated genes
 #### Get gene lists
 ```{r}
 # Genes that have higher expression in individuals with dementia relative to controls
-disease_up_ordered <- deg_table_disease %>% 
-  filter(P.Value < 0.05 & logFC > 0) %>% 
+disease_up_ordered <- deg_table_ad_neuropath %>% 
+  filter(adj.P.Val < 0.1 & logFC > 0) %>% 
   arrange(desc(logFC)) %>% 
-  .$gene_symbol
+  pull(gene_symbol)
 
 # Genes that have lower expression in individuals with dementia relative to controls
-disease_down_ordered <- deg_table_disease %>% 
-  filter(P.Value < 0.05 & logFC < 0) %>% 
+disease_down_ordered <- deg_table_ad_neuropath %>% 
+  filter(adj.P.Val < 0.1 & logFC < 0) %>% 
   arrange(logFC) %>% 
-  .$gene_symbol
+  pull(gene_symbol)
 ```
 
 #### Enrichment analysis
@@ -259,7 +381,7 @@ gp_disease = gost(list("up-regulated" = disease_up_ordered,
 gp_disease_terms <- gp_disease$result %>% 
   group_by(query, source) %>% 
   slice_min(order_by = p_value, n = 3) %>% 
-  .$term_id
+  pull(term_id)
 ```
 
 #### Plot results
