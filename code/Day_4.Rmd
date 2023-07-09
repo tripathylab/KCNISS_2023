@@ -42,16 +42,9 @@ https://github.com/stripathy/pseudobulk_tutorial/blob/master/sea_ad_make_pseudob
 We will only be working with one cell type: SST neurons. 
 
 ```{r}
-pseudobulk_sst_counts = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk.csv')
-# pseudobulk_sst_counts = read_csv('SST_pseudobulk.csv')
-gene_info = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk_gene_info.csv')
-sea_ad_meta = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk_meta_updated.csv')
-
-
-# sea_ad_meta = read_csv('~/pseudobulk_tutorial/SST_pseudobulk_meta_updated.csv')
-
-# sea_ad_meta = read_csv('SST_pseudobulk_meta.csv')
-# gene_info = read_csv('SST_pseudobulk_gene_info.csv')
+pseudobulk_sst_counts = read_csv('SST_pseudobulk.csv')
+sea_ad_meta = read_csv('SST_pseudobulk_meta.csv')
+gene_info = read_csv('SST_pseudobulk_gene_info.csv')
 rownames(pseudobulk_sst_counts) = gene_info$gene_symbol
 
 sea_ad_meta = sea_ad_meta %>% mutate(disease = factor(disease, 
