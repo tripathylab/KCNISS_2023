@@ -81,6 +81,7 @@ dplyr:
 - select
 - group_by
 - summarize
+- pull
 
 **And later, we can look at...**
 
@@ -88,7 +89,7 @@ dplyr:
 - bind_rows, left_join, etc.
 
 tidyr:
-- pivot_longer, pivot_wider
+- pivot_longer/pivot_wider
 
 ggplot2:
 - plot types (e.g. histogram, boxplot, bar, smooth, point, violin)
@@ -152,7 +153,7 @@ meta_smart %>%
 This function works similarly to mutate in that it will create new columns that you define, but instead of creating a new value for each row like mutate, it will collapse to one row containing a value that summarizes all rows or, when provided with a grouping structure, a set of rows each containing a value that summarizes all rows within a group. 
 
 Let's put this all together to ask a really specific (albeit odd) question with our metadata:
-What specific region / cortical layer combo is the most common location for our VIP neurons, stratified by donor sex?
+What region / cortical layer combo is the most common location for our VIP neurons, stratified by donor sex?
 ```{r}
 meta_smart %>% 
   filter(subclass_label == "VIP") %>% 
@@ -162,6 +163,15 @@ meta_smart %>%
   group_by(donor_sex_label, region_layer_label) %>% 
   tally %>% 
   summarize(region_summary = region_layer_label[which.max(n)])
+```
+
+#### pull
+Finally, if there's a column in a dataframe that you'd like to grab and use somewhere else, you can extract those values using this function.
+
+For example, you might just want to grab the sample names to use for filtering other dataframes:
+```{r, include=FALSE}
+meta_smart %>% 
+  pull(sample_name)
 ```
 
 ## Intro to the Seurat object
