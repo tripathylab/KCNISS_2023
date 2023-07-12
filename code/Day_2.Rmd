@@ -221,6 +221,20 @@ p1 + p2
 ### Differential expression
 Use Day 1 as a reference to pick some cell types of interest, find their markers, and visualize them.
 
+#### Plotting marker genes
+```{r}
+all_markers <- FindAllMarkers(Seu_10x, logfc.threshold = log(2), min.pct = .2)
+markers <- all_markers %>% 
+  distinct(gene, .keep_all = T) %>% 
+  group_by(cluster) %>% 
+  slice_max(order_by = avg_log2FC, n = 3) %>% 
+  pull(gene)
+
+DoHeatmap(subset(Seu_smart, downsample = 100), features = markers, size = 3,
+          slot="data") +
+  scale_fill_viridis_c()
+```
+
 ## 10x vs SMART-seq
 Now, we've looked at two different human-derived single-cell RNA-sequencing datasets which use two different sequencing methodologies. Let's compare them.
 
@@ -288,6 +302,25 @@ ggplot(RNA_counts_combined, aes(x = method, y = RNA_count, fill = method)) +
   theme_classic() +
   stat_compare_means() + 
   theme(legend.position = "none")
+```
+
+### Another way of doing this:
+```{r}
+features_10x <- Seu_10x@meta.data %>% 
+  select(nCount_RNA, nFeature_RNA, subclass_label) %>% 
+  mutate(method = "10x")
+
+features_smart <- Seu_smart@meta.data %>% 
+  select(nCount_RNA, nFeature_RNA, subclass_label) %>% 
+  mutate(method = "smart")
+
+features_combined = bind_rows(features_10x, features_smart)
+
+ggplot(features_combined, aes(x = nCount_RNA, y = nFeature_RNA, colour = subclass_label)) +
+  geom_point(alpha = 0.3) + 
+  facet_wrap(~method, scales = "free_y") +
+  geom_smooth(method = "lm") +
+  theme_classic()
 ```
 
 # Save your Seurat object for next time
