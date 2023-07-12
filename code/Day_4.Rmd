@@ -9,7 +9,7 @@ output: pdf_document
 ## Setup
 ### Set working directory
 ```{r setup}
-knitr::opts_knit$set(root.dir = "~/KCNISS_2023/SST_pseudobulk/data")
+knitr::opts_knit$set(root.dir = "~/KCNISS_2023/data/SST_pseudobulk")
 ```
 
 ### Load packages
@@ -86,7 +86,7 @@ We will only be working with one cell type: SST neurons.
 
 ```{r}
 pseudobulk_sst_counts = read_csv('SST_pseudobulk.csv')
-sea_ad_meta = read_csv('SST_pseudobulk_meta.csv')
+sea_ad_meta = read_csv('SST_pseudobulk_meta_updated.csv')
 gene_info = read_csv('SST_pseudobulk_gene_info.csv')
 rownames(pseudobulk_sst_counts) = gene_info$gene_symbol
 
