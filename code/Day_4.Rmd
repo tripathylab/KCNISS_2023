@@ -9,7 +9,7 @@ output: pdf_document
 ## Setup
 ### Set working directory
 ```{r setup}
-knitr::opts_knit$set(root.dir = "~/Downloads/KCNISS_2023/SST_pseudobulk/")
+knitr::opts_knit$set(root.dir = "~/KCNISS_2023/SST_pseudobulk/data")
 ```
 
 ### Load packages
@@ -34,6 +34,49 @@ suppressPackageStartupMessages({
   library(gprofiler2)
 })
 ```
+
+### Illustrate how to perform pseudobulking of a seurat cout matrix by donors and by cell types
+We're going to first illustrate pseudobulking using the 10x SEA-AD dataset that we used in the prior days
+
+Load in the mini-sea ad dataset - we can also just load in our older Seu_10x dataset as well
+```{r}
+# metadata
+meta_10x <- read.csv("../data/SEA-AD_10x_meta_mini.csv", row.names = 1)
+#row.names(meta_10x) should contain same values as row.names(counts_10x)
+
+# counts matrix
+counts_10x <- read.csv("../data/SEA-AD_10x_counts_mini.csv", row.names = 1)
+
+# create Seurat object
+Seu_10x <- CreateSeuratObject(counts = t(counts_10x), 
+                                meta.data = meta_10x)
+```
+
+### now we're going to create the pseudobulk dataset where columns denote expression from each donor and cell type
+
+We're going to first illustrate pseudobulking using the 10x SEA-AD dataset that we used in the prior days
+
+```{r}
+# the metadata columns that we will pseudobulk on are named: 
+# external_donor_name_label, subclass_label
+
+# PseuobulkExpression is a convenience function within Seurat for generating Pseudobulks
+pseudobulk_seu_10x_object <- Seurat:::PseudobulkExpression(object = Seu_10x, group.by = c('external_donor_name_label', 'subclass_label'), pb.method = 'aggregate', slot = 'counts')
+
+pseudobulk_seu_10x_counts = pseudobulk_seu_10x_object[['RNA']] %>% as.data.frame()
+                 
+# now let's inspect the resulting object - note how the column names are a combination of external_donor_name_label and subclass_label
+
+pseudobulk_seu_10x_counts[1:5, 1:5]
+```
+
+### Using pre-generated pseudobulks from the full SEA-AD dataset for a specific cell type - SST cells
+
+The data we're about to load in have been pseudobulked in advance using this script:
+https://github.com/stripathy/pseudobulk_tutorial/blob/master/sea_ad_make_pseudobulk.R
+
+We will only be working with one cell type: SST neurons. 
+
 
 ### Load pseudobulked gene expression data
 The data we're about to load in have been pseudobulked in advance using this script:
@@ -162,8 +205,15 @@ But notice that this is mostly an artifact of there being fewer SST cells in peo
 # Find subjects with information for disease, Sex, PMI, and Age
 use_subjects = complete.cases(sea_ad_meta %>% dplyr::select(disease, Sex, PMI, Age_norm))
 
-# Drop subjects with fewer than 50 SST cells per donor and also younger donors who are part of the neurotypical reference
-use_subjects = use_subjects & (sea_ad_meta$cells_per_donor > 50) & (!sea_ad_meta$`Cognitive status` == 'Reference')
+# the authors say there's a set of 11 subjects with really bad AD that messes up the mRNA in their cells
+# and that they should be excluded from downstream analyses
+severely_affected_subjects = c('H20.33.028', 'H20.33.033', 'H20.33.037', 'H20.33.038',
+       'H20.33.046', 'H21.33.009', 'H21.33.020', 'H21.33.033',
+       'H21.33.034', 'H21.33.039', 'H21.33.045')
+
+# Drop subjects with fewer than 50 SST cells per donor and also younger donors who are part of the neurotypical reference and also subjects who are in the severly_affected_donors_list
+use_subjects = use_subjects & (sea_ad_meta$cells_per_donor > 50) & (!sea_ad_meta$`Cognitive status` == 'Reference') & (!sea_ad_meta$donor_id %in% severely_affected_subjects)
+
 use_subjects_donor_list = sea_ad_meta[use_subjects, 'donor_id'] %>% unlist
 
 disease = factor(unlist(sea_ad_meta[use_subjects, 'disease']), 
