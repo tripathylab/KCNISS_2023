@@ -85,16 +85,9 @@ https://github.com/stripathy/pseudobulk_tutorial/blob/master/sea_ad_make_pseudob
 We will only be working with one cell type: SST neurons. 
 
 ```{r}
-pseudobulk_sst_counts = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk.csv')
-# pseudobulk_sst_counts = read_csv('SST_pseudobulk.csv')
-gene_info = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk_gene_info.csv')
-sea_ad_meta = read_csv('/external/rprshnas01/netdata_kcni/stlab/SEA-AD/SST_pseudobulk_meta_updated.csv')
-
-
-# sea_ad_meta = read_csv('~/pseudobulk_tutorial/SST_pseudobulk_meta_updated.csv')
-
-# sea_ad_meta = read_csv('SST_pseudobulk_meta.csv')
-# gene_info = read_csv('SST_pseudobulk_gene_info.csv')
+pseudobulk_sst_counts = read_csv('SST_pseudobulk.csv')
+sea_ad_meta = read_csv('SST_pseudobulk_meta.csv')
+gene_info = read_csv('SST_pseudobulk_gene_info.csv')
 rownames(pseudobulk_sst_counts) = gene_info$gene_symbol
 
 sea_ad_meta = sea_ad_meta %>% mutate(disease = factor(disease, 
@@ -457,13 +450,13 @@ gostplot(gp_disease, capped = FALSE, interactive = FALSE,
 male_up_ordered <- deg_table_sex %>% 
   filter(P.Value < 0.05 & logFC > 0) %>% 
   arrange(desc(logFC)) %>% 
-  .$gene_symbol
+  pull(gene_symbol)
 
 # Genes that have lower expression in males relative to females
 male_down_ordered <- deg_table_sex %>% 
   filter(P.Value < 0.05 & logFC < 0) %>% 
   arrange(logFC) %>% 
-  .$gene_symbol
+  pull(gene_symbol)
 ```
 
 #### Enrichment analysis
@@ -476,7 +469,7 @@ gp_sex = gost(list("up-regulated" = male_up_ordered,
 gp_sex_terms <- gp_sex$result %>% 
   group_by(query, source) %>% 
   slice_min(order_by = p_value, n = 3) %>% 
-  .$term_id
+  pull(term_id)
 ```
 
 #### Plot results
