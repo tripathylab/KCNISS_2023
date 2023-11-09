@@ -1,8 +1,8 @@
 ---
 title: 'KCNI Summer Academy 2023: Day 4'
-author: "Mel Davie"
+author: "Shreejoy Tripathy and Mel Davie"
 date: "13/07/2023"
-output: pdf_document
+output: html_document
 ---
 
 # Case-control differential expression with pseudobulks
@@ -18,7 +18,7 @@ In this tutorial, we will:
 ## Setup
 ### Set working directory
 ```{r setup}
-#knitr::opts_knit$set(root.dir = "~/KCNISS_2023/astro_pseudobulk")
+knitr::opts_knit$set(root.dir = "~/Documents/KCNISS_2023/")
 ```
 
 ### Load packages
@@ -73,19 +73,20 @@ To do this, we will use a Seurat function called **AggregateExpression**, which 
 The metadata columns that we will pseudobulk on are named: external_donor_name_label, subclass_label. Thus, in our pseudobulked dataset, columns denote expression from each donor for each cell type.
 ```{r}
 ### Inspect the metadata to get a sense of what information we could use to pseudobulk
-head(meta_10x)
+head(meta_10x) %>% knitr::kable()
 
 ### We want our counts matrix such that each column is one cell type from one individual
-pseudobulk_seu_10x <- AggregateExpression(object = Seu_10x, group.by = c('external_donor_name_label', 
-                                                                                'subclass_label'),
-                                                 slot = 'counts')
+pseudobulk_seu_10x <- AggregateExpression(object = Seu_10x, 
+                                          group.by = c('external_donor_name_label', 
+                                          'subclass_label'), 
+                                          slot = 'counts')
 
 ### Extract just the pseudobulked count matrix as a dataframe
 pseudobulk_seu_10x_counts <- pseudobulk_seu_10x[['RNA']] %>% as.data.frame()
                  
 ### Inspect the resulting object - note how the column names are a combination of 
 ### external_donor_name_label and subclass_label
-head(pseudobulk_seu_10x_counts)
+head(pseudobulk_seu_10x_counts) %>% knitr::kable()
 ```
 
 ### Using pre-generated pseudobulks from the full SEA-AD dataset for a specific cell type - Astrocytes
@@ -156,6 +157,7 @@ p2 <- ggplot(sea_ad_meta, aes(x = disease, y = cells_per_donor / total_cells_per
 
 p1 + p2
 ```
+
 It looks like the total number of astrocytes is similar between individuals with dementia and controls, but they make up a greater proportion of all collected cells in individuals with dementia. 
 
 **Follow-up question:** What could cause this result?
@@ -169,9 +171,9 @@ ggplot(sea_ad_meta,
   theme_cowplot() + 
   ylab('Astrocyte nuclei fraction (%, total nuclei)') +
   xlab('AD Pathology score') + 
-  stat_cor(show.legend = F) #note, if you don't want a specific item of your ggplot to be 
-                            #included in the legend, use show.legend=F
+  stat_cor(show.legend = F) 
 ```
+
 Following up on our previous result, it looks like the proportion of astrocytes increases with CPS.
 
 ### Normalize our counts to CPM
@@ -186,7 +188,6 @@ colnames(pseudobulk_astro_cpm) <- gene_info$feature_name # add gene names
 
 pseudobulk_astro_cpm <- left_join(sea_ad_meta, pseudobulk_astro_cpm %>% 
                                        rownames_to_column(var = 'donor_id')) # add on the metadata
-# not that when a joining variable is not specified to left_join, it will join by the first column name match
 ```
 
 ### Plot gene expression (GFAP below) in case vs. control
@@ -198,6 +199,7 @@ ggplot(pseudobulk_astro_cpm, aes(x = disease, y = log2(GFAP+1), fill = disease))
   ylab('GFAP mRNA expr (log2 CPM+1)') +
   stat_compare_means()
 ```
+
 It seems that GFAP (a canonical astrocyte marker) is expressed similarly between controls and individuals with dementia. This makes sense, as you can recall from our earlier plot that the number of astrocyte nuclei per donor is also similar between cases and controls.
 
 ## Differential expression with limma-voom
@@ -361,7 +363,7 @@ To pull the DGE results, we use a function called **topTable**. Here, we will sp
 
 ```{r}
 # What are our coefficients called again?
-fit_con$cov.coefficients
+fit_con$cov.coefficients %>% knitr::kable()
 
 ### Binary
 deg_table_sex_bin = topTable(fit_bin, coef = "sexMale",  n = Inf, sort = "none", 
@@ -369,7 +371,8 @@ deg_table_sex_bin = topTable(fit_bin, coef = "sexMale",  n = Inf, sort = "none",
 
 deg_table_sex_bin %>% 
   arrange(adj.P.Val) %>% 
-  head()
+  head() %>% 
+  knitr::kable()
 
 ### Continuous
 deg_table_sex_con = topTable(fit_con, coef = "sexMale",  n = Inf, sort = "none", 
@@ -377,12 +380,15 @@ deg_table_sex_con = topTable(fit_con, coef = "sexMale",  n = Inf, sort = "none",
 
 deg_table_sex_con %>% 
   arrange(adj.P.Val) %>% 
-  head()
+  head() %>% 
+  knitr::kable()
 ```
+
 Whether we used the binary or the continuous AD measure doesn't seem to have much influence here. You can notice that the top DEGs here are (unsurprisingly) related to the X and Y chromosomes.
 
 #### Volcano plot of genes associated with sex
 To get a general sense of the gene expression differences between the sexes, we can create what is called a **volcano plot** (because it looks like the mouth of a volcano). It plots -log10(p-value) against log2(fold change). We transform our p-values for this plot so that the points are more visible, and higher values now reflect a more significant result.
+
 ```{r}
 deg_table_sex_con %>% 
   ggplot(aes(x = logFC, y = -log10(P.Value), label = feature_name)) + 
@@ -395,6 +401,7 @@ deg_table_sex_con %>%
   theme_cowplot() +
   theme(legend.position = "none")
 ```
+
 To the right of the volcano (positive logFC), we have genes that are up-regulated in males relative to females. To the left, we instead have genes that are up in females.
 
 What separates the genes from the left and right hand sides of the plot? Does this make sense?
@@ -408,7 +415,8 @@ deg_table_disease_bin = topTable(fit_bin, coef = "diseasedementia",  n = Inf, so
 
 deg_table_disease_bin %>% 
   arrange(adj.P.Val) %>% 
-  head(20)
+  head(20) %>% 
+  knitr::kable()
 
 ### Continuous
 deg_table_disease_con = topTable(fit_con, coef = "neuropath_score",  n = Inf, sort = "none", 
@@ -416,8 +424,10 @@ deg_table_disease_con = topTable(fit_con, coef = "neuropath_score",  n = Inf, so
 
 deg_table_disease_con %>% 
   arrange(adj.P.Val) %>% 
-  head(20)
+  head(20) %>% 
+  knitr::kable()
 ```
+
 Notice that treating disease as binary versus continuous completely changes our top genes!
 
 #### Volcano plot of genes associated with disease
@@ -446,6 +456,7 @@ deg_table_disease_con %>%
   theme_cowplot() +
   theme(legend.position = "none")
 ```
+
 Comparing this volcano plot to our earlier one, we can see there are far fewer DEGs in our binary AD condition than between the sexes. Why might this be the case?
 
 Now plotting our continuous AD metric, we can see that there are MANY more DEGs. Why do you think that is?
