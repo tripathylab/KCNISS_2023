@@ -2,7 +2,7 @@
 title: 'KCNI Summer Academy 2023: Day 3'
 author: "Mel Davie"
 date: "12/07/2023"
-output: pdf_document
+output: github_document
 ---
 
 # Dataset integration & automated cell type annotation

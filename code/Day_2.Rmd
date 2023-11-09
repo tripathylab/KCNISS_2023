@@ -2,7 +2,7 @@
 title: 'KCNI Summer Academy 2023: Day 2'
 author: "Mel Davie"
 date: "11/07/2023"
-output: pdf_document
+output: github_document
 ---
 
 # Intro to differential expression, cell type identification & visualizations
@@ -69,9 +69,9 @@ all_clusters <- FindAllMarkers(Seu_smart, logfc.threshold = log(2), min.pct = 0.
 ### Examine results
 ```{r}
 # taking a look at most significantly DE marker genes
-cluster_8_v_3 %>% head(n = 10)
-cluster_8_v_all %>% head(n = 10)
-cluster_2_v_all %>% head(n = 10)
+cluster_8_v_3 %>% head(n = 10) %>% knitr::kable()
+cluster_8_v_all %>% head(n = 10) %>% knitr::kable()
+cluster_2_v_all %>% head(n = 10) %>% knitr::kable()
 
 # two different ways of looking for a specific gene in the output dataframes, 
 # where genes are rownames
@@ -105,9 +105,9 @@ F_microglia_vs_M_microglia <- FindMarkers(Seu_smart, ident.1 = "F_Microglia",
                                           ident.2 = "M_Microglia", 
                                           logfc.threshold = log(2), min.pct = 0.25)
 
-F_microglia_vs_M_microglia %>% head(n = 10)
+F_microglia_vs_M_microglia %>% head(n = 10) %>% knitr::kable()
 
-Seu_smart@assays$RNA@counts["GFAP",][1:10] #checking if a gene is present in matrix
+Seu_smart@assays$RNA@counts["GFAP",][1:10] %>% knitr::kable() #checking if a gene is present in matrix
 #this is grabbing the number of reads per sample for the gene GFAP for samples 1-10
 ```
 

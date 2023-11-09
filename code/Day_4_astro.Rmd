@@ -2,7 +2,7 @@
 title: 'KCNI Summer Academy 2023: Day 4'
 author: "Shreejoy Tripathy and Mel Davie"
 date: "13/07/2023"
-output: html_document
+output: github_document
 ---
 
 # Case-control differential expression with pseudobulks
@@ -562,6 +562,7 @@ gostplot(gp_sex, capped = FALSE, interactive = FALSE,
                                                  gp_sex_terms,
                                        1, 0))
 ```
+
 Can you make sense of any of these terms?
 
 ### AD Neuropathology - associated genes
@@ -608,4 +609,5 @@ gostplot(gp_disease, capped = FALSE, interactive = FALSE,
                                                  gp_disease_terms,
                                        1, 0))
 ```
+
 Finally, do you see any terms that make sense as being affected by AD?
