@@ -205,7 +205,7 @@ cluster_9_markers <- FindConservedMarkers(Seu_intd_obj, ident.1 = 9,
 
 # top conserved cluster markers
 cluster_9_markers %>% 
-  head(n = 10)
+  head(n = 10) %>% knitr::kable()
 ```
 
 ## Differential expression
@@ -286,6 +286,7 @@ table(smart_query$prediction.match)
 
 table(smart_query$predicted.id)
 ```
+
 After using the 10x as a reference above, you can choose to try using the Smart-seq as a reference to annotate the Smart-seq cells and see how this performs.
 
 ### Using MapQuery
